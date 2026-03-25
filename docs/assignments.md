@@ -128,3 +128,62 @@ Thus file contains assignments (step-by-step development guidelines) for Pokedex
 - Use this as the first input: `CHARMANDER is better than bulbasaur.`
 - Use this as the second input: `Pikachu is kinda mean to ash.`
 - Terminate the program by pressing ctrl+c.
+
+## Assignment 4
+
+### Task 4.1
+
+- Remove your logic that prints the first word (the command) back to the user
+- Add a callback for the exit command. Commands in our REPL are just callback functions with no arguments, but that return an error. For example: `func commandExit() error`
+  This function should print `Closing the Pokedex... Goodbye!` then immediately exit the program e.g. `os.Exit(0)`.
+
+### Task 4.2
+
+- Create a "registry" of commands. This will give us a nice abstraction for managing the many commands we'll be adding. Create a struct type that describes a command:
+
+  ```go
+  type cliCommand struct {
+      name        string
+      description string
+      callback    func() error
+  }
+  ```
+
+- Then create a map of supported commands:
+
+  ```go
+  map[string]cliCommand{
+      "exit": {
+          name:        "exit",
+          description: "Exit the Pokedex",
+          callback:    commandExit,
+      },
+  }
+  ```
+
+- Register the exit command. Update your REPL loop to use the "command" the user typed in to look up the callback function in the registry. If the command is found, call the callback (and print any errors that are returned). If there isn't a handler, just print `Unknown command`.
+
+### Task 4.3
+
+- Add unit tests for the new functionality
+- Run tests
+
+### Task 4.4
+
+- Add a `help` command, its callback, and register it. It should print:
+
+  ```
+  Welcome to the Pokedex!
+  Usage:
+
+  help: Displays a help message
+  exit: Exit the Pokedex
+  ```
+
+- Add unit tests for the new functionality
+- Run tests
+
+### Task 4.5
+
+- Test your code again manually
+

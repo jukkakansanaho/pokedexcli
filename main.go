@@ -8,14 +8,21 @@ import (
 
 func main() {
 	scanner := bufio.NewScanner(os.Stdin)
+	commands := commandRegistry()
 	for {
 		fmt.Print("Pokedex > ")
 		scanner.Scan()
 		words := cleanInput(scanner.Text())
-		firstWord := ""
-		if len(words) > 0 {
-			firstWord = words[0]
+		if len(words) == 0 {
+			continue
 		}
-		fmt.Println("Your command was:", firstWord)
+		cmd := words[0]
+		handled, err := runRegisteredCommand(commands, cmd)
+		if err != nil {
+			fmt.Println(err)
+		}
+		if !handled {
+			fmt.Println("Unknown command")
+		}
 	}
 }
