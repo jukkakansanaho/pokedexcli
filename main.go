@@ -9,6 +9,7 @@ import (
 func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	commands := commandRegistry()
+	cfg := &config{}
 	for {
 		fmt.Print("Pokedex > ")
 		scanner.Scan()
@@ -17,7 +18,7 @@ func main() {
 			continue
 		}
 		cmd := words[0]
-		handled, err := runRegisteredCommand(commands, cmd)
+		handled, err := runRegisteredCommand(commands, cfg, cmd)
 		if err != nil {
 			fmt.Println(err)
 		}
