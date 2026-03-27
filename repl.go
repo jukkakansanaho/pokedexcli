@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/jukkakansanaho/pokedexcli/internal/pokeapi"
+	"github.com/jukkakansanaho/pokedexcli/internal/pokecache"
 )
 
 // config holds REPL state needed for commands (e.g. PokeAPI pagination URLs).
@@ -14,6 +15,7 @@ type config struct {
 	Next     *string
 	Previous *string
 	client   *http.Client // if nil, http.DefaultClient; tests may set for httptest
+	cache    *pokecache.Cache
 }
 
 type cliCommand struct {
@@ -79,7 +81,7 @@ func commandMap(cfg *config) error {
 	if client == nil {
 		client = http.DefaultClient
 	}
-	page, err := pokeapi.ListLocationAreas(client, pageURL)
+	page, err := pokeapi.ListLocationAreas(client, cfg.cache, pageURL)
 	if err != nil {
 		return err
 	}
@@ -100,7 +102,7 @@ func commandMapb(cfg *config) error {
 	if client == nil {
 		client = http.DefaultClient
 	}
-	page, err := pokeapi.ListLocationAreas(client, *cfg.Previous)
+	page, err := pokeapi.ListLocationAreas(client, cfg.cache, *cfg.Previous)
 	if err != nil {
 		return err
 	}

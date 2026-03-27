@@ -306,3 +306,29 @@ Thus file contains assignments (step-by-step development guidelines) for Pokedex
   mt-coronet-6f
   mt-coronet-1f-from-exterior
   ```
+
+## Assignment 6
+
+### Task 6.1
+
+- Create a new internal package called pokecache in your internal directory (if you haven't already created an internal directory in your project, do so now). This package will be responsible for all of our caching logic.
+- Use a Cache struct to hold a map[string]cacheEntry and a mutex to protect the map across goroutines. A cacheEntry should be a struct with two fields:
+
+  - createdAt - A time.Time that represents when the entry was created.
+  - val - A []byte that represents the raw data we're caching.
+
+  You'll probably want to expose a NewCache() function that creates a new cache with a configurable interval (time.Duration).
+
+- Create a cache.Add() method that adds a new entry to the cache. It should take a key (a string) and a val (a []byte).
+- Create a cache.Get() method that gets an entry from the cache. It should take a key (a string) and return a []byte and a bool. The bool should be true if the entry was found and false if it wasn't.
+- Create a cache.reapLoop() method that is called when the cache is created (by the NewCache function). Each time an interval (the time.Duration passed to NewCache) passes it should remove any entries that are older than the interval. This makes sure that the cache doesn't grow too large over time. For example, if the interval is 5 seconds, and an entry was added 7 seconds ago, that entry should be removed.
+
+  TIP: Clearing the Cache: You can use a time.Ticker inside a goroutine started by NewCache. In a loop like for range ticker.C { ... }, check the entries and remove any whose createdAt is older than the cache's interval.
+
+  Maps are not thread-safe in Go. You should use a sync.Mutex to lock access to the map when you're adding, getting entries or reaping entries. It's unlikely that you'll have issues because reaping only happens every ~5 seconds, but it's still possible, so you should make your cache package safe for concurrent use.
+
+- Update the code that makes requests to the PokeAPI to use the cache. If you already have the data for a given URL (which is our cache key) in the cache, you should use that instead of making a new request. Whenever you do make a request, you should add the response to the cache.
+
+- Write tests for your cache package!
+
+- Test your application manually to make sure that the cache works as expected. When you use the map command to get data for the first time there should be a noticeable waiting time. However, when you use mapb it should be instantaneous because the data for that page is already in the cache. Feel free to add some logging that informs you in the command line when the cache is being used.

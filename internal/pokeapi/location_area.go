@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+
+	"github.com/jukkakansanaho/pokedexcli/internal/pokecache"
 )
 
 const defaultLocationAreaListURL = "https://pokeapi.co/api/v2/location-area/"
@@ -22,13 +25,26 @@ type LocationAreaListResponse struct {
 
 // ListLocationAreas performs a GET for one page of location areas.
 // If url is empty, the first page URL is used.
-func ListLocationAreas(client *http.Client, url string) (*LocationAreaListResponse, error) {
+// If cache is non-nil, responses are read from or stored in the cache keyed by the request URL.
+func ListLocationAreas(client *http.Client, cache *pokecache.Cache, url string) (*LocationAreaListResponse, error) {
 	if url == "" {
 		url = defaultLocationAreaListURL
 	}
 	if client == nil {
 		client = http.DefaultClient
 	}
+
+	if cache != nil {
+		if body, ok := cache.Get(url); ok {
+			log.Printf("pokeapi: cache hit for %s", url)
+			var out LocationAreaListResponse
+			if err := json.Unmarshal(body, &out); err != nil {
+				return nil, err
+			}
+			return &out, nil
+		}
+	}
+
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, err
@@ -40,6 +56,9 @@ func ListLocationAreas(client *http.Client, url string) (*LocationAreaListRespon
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return nil, fmt.Errorf("pokeapi: GET %s: %s", url, resp.Status)
+	}
+	if cache != nil {
+		cache.Add(url, body)
 	}
 	var out LocationAreaListResponse
 	if err := json.Unmarshal(body, &out); err != nil {
