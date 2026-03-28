@@ -23,7 +23,8 @@ func main() {
 			continue
 		}
 		cmd := words[0]
-		handled, err := runRegisteredCommand(commands, cfg, cmd)
+		args := words[1:]
+		handled, err := runRegisteredCommand(commands, cfg, cmd, args)
 		if err != nil {
 			fmt.Println(err)
 		}

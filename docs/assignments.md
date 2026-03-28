@@ -332,3 +332,36 @@ Thus file contains assignments (step-by-step development guidelines) for Pokedex
 - Write tests for your cache package!
 
 - Test your application manually to make sure that the cache works as expected. When you use the map command to get data for the first time there should be a noticeable waiting time. However, when you use mapb it should be instantaneous because the data for that page is already in the cache. Feel free to add some logging that informs you in the command line when the cache is being used.
+
+## Assignment 7
+
+### Task 7.1
+
+- Add an "explore" command. It takes the name of a location area as an argument.
+- Write tests for "explore" command.
+
+Tips:
+- Use the same PokeAPI location-area endpoint (https://pokeapi.co/docs/v2#location-areas), but this time you'll need to pass the name of the location area being explored. By adding a name or id, the API will return a lot more information about the location area.
+- Feel free to use tools like JSON lint and JSON to Go to help you parse the response.
+- Parse the Pokemon's names from the response and display them to the user.
+- Make sure to use the caching layer again! Re-exploring an area should be blazingly fast.
+- You'll need to alter the function signature of all your commands to allow them to allow parameters. E.g. explore <area_name>
+
+Example usage:
+
+```
+Pokedex > explore pastoria-city-area
+Exploring pastoria-city-area...
+Found Pokemon:
+ - tentacool
+ - tentacruel
+ - magikarp
+ - gyarados
+ - remoraid
+ - octillery
+ - wingull
+ - pelipper
+ - shellos
+ - gastrodon
+Pokedex >
+```

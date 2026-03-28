@@ -9,6 +9,9 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/jukkakansanaho/pokedexcli/internal/pokecache"
 )
 
 func TestCleanInput(t *testing.T) {
@@ -55,10 +58,11 @@ func TestCommandRegistry(t *testing.T) {
 		wantName string
 		wantDesc string
 	}{
-		"help": {wantName: "help", wantDesc: "Displays a help message"},
-		"map":  {wantName: "map", wantDesc: "List the next 20 location areas"},
-		"mapb": {wantName: "mapb", wantDesc: "List the previous 20 location areas"},
-		"exit": {wantName: "exit", wantDesc: "Exit the Pokedex"},
+		"help":    {wantName: "help", wantDesc: "Displays a help message"},
+		"map":     {wantName: "map", wantDesc: "List the next 20 location areas"},
+		"mapb":    {wantName: "mapb", wantDesc: "List the previous 20 location areas"},
+		"explore": {wantName: "explore", wantDesc: "Explore a location area by name"},
+		"exit":    {wantName: "exit", wantDesc: "Exit the Pokedex"},
 	}
 	for key, w := range cases {
 		c, ok := reg[key]
@@ -78,7 +82,7 @@ func TestCommandRegistry(t *testing.T) {
 }
 
 func TestHelpMessage(t *testing.T) {
-	want := "Welcome to the Pokedex!\nUsage:\n\nhelp: Displays a help message\nmap: List the next 20 location areas\nmapb: List the previous 20 location areas\nexit: Exit the Pokedex\n"
+	want := "Welcome to the Pokedex!\nUsage:\n\nhelp: Displays a help message\nmap: List the next 20 location areas\nmapb: List the previous 20 location areas\nexplore <area>: Explore a location area by name\nexit: Exit the Pokedex\n"
 	if got := helpMessage(); got != want {
 		t.Errorf("helpMessage() = %q; want %q", got, want)
 	}
@@ -94,7 +98,7 @@ func TestCommandHelp(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- commandHelp(&config{})
+		errCh <- commandHelp(&config{}, nil)
 		w.Close()
 	}()
 
@@ -165,7 +169,7 @@ func TestCommandMap(t *testing.T) {
 	}
 
 	out1 := captureStdout(t, func() {
-		if err := commandMap(cfg); err != nil {
+		if err := commandMap(cfg, nil); err != nil {
 			t.Fatalf("commandMap: %v", err)
 		}
 	})
@@ -182,7 +186,7 @@ func TestCommandMap(t *testing.T) {
 	}
 
 	out2 := captureStdout(t, func() {
-		if err := commandMap(cfg); err != nil {
+		if err := commandMap(cfg, nil); err != nil {
 			t.Fatalf("commandMap second call: %v", err)
 		}
 	})
@@ -227,17 +231,17 @@ func TestCommandMap_mapThenMapb(t *testing.T) {
 	}
 
 	out1 := captureStdout(t, func() {
-		if err := commandMap(cfg); err != nil {
+		if err := commandMap(cfg, nil); err != nil {
 			t.Fatalf("commandMap: %v", err)
 		}
 	})
 	captureStdout(t, func() {
-		if err := commandMap(cfg); err != nil {
+		if err := commandMap(cfg, nil); err != nil {
 			t.Fatalf("commandMap 2: %v", err)
 		}
 	})
 	outMapb := captureStdout(t, func() {
-		if err := commandMapb(cfg); err != nil {
+		if err := commandMapb(cfg, nil); err != nil {
 			t.Fatalf("commandMapb: %v", err)
 		}
 	})
@@ -249,7 +253,7 @@ func TestCommandMap_mapThenMapb(t *testing.T) {
 func TestCommandMapb_firstPage(t *testing.T) {
 	cfg := &config{}
 	out := captureStdout(t, func() {
-		if err := commandMapb(cfg); err != nil {
+		if err := commandMapb(cfg, nil); err != nil {
 			t.Fatalf("commandMapb: %v", err)
 		}
 	})
@@ -271,12 +275,12 @@ func TestCommandMapb_firstPageAfterMap(t *testing.T) {
 		client: ts.Client(),
 	}
 	captureStdout(t, func() {
-		if err := commandMap(cfg); err != nil {
+		if err := commandMap(cfg, nil); err != nil {
 			t.Fatal(err)
 		}
 	})
 	out := captureStdout(t, func() {
-		if err := commandMapb(cfg); err != nil {
+		if err := commandMapb(cfg, nil); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -295,12 +299,122 @@ func TestCommandMapb_fetchError(t *testing.T) {
 		Previous: &u,
 		client:   ts.Client(),
 	}
-	err := commandMapb(cfg)
+	err := commandMapb(cfg, nil)
 	if err == nil {
 		t.Fatal("commandMapb: want error on HTTP 500")
 	}
 	if !strings.Contains(err.Error(), "500") {
 		t.Errorf("error = %v; want message mentioning 500", err)
+	}
+}
+
+const exploreAreaJSON = `{
+	"id": 1,
+	"name": "pastoria-city-area",
+	"pokemon_encounters": [
+		{"pokemon": {"name": "tentacool", "url": "http://a"}},
+		{"pokemon": {"name": "magikarp",  "url": "http://b"}},
+		{"pokemon": {"name": "gyarados",  "url": "http://c"}}
+	]
+}`
+
+func TestCommandExplore(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/location-area/pastoria-city-area/" {
+			t.Errorf("explore: path = %q; want /location-area/pastoria-city-area/", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, exploreAreaJSON)
+	}))
+	defer ts.Close()
+
+	cfg := &config{client: ts.Client(), pokeAPIBaseURL: ts.URL + "/location-area/"}
+	out := captureStdout(t, func() {
+		if err := commandExplore(cfg, []string{"pastoria-city-area"}); err != nil {
+			t.Fatalf("commandExplore: %v", err)
+		}
+	})
+
+	want := "Exploring pastoria-city-area...\nFound Pokemon:\n - tentacool\n - magikarp\n - gyarados\n"
+	if out != want {
+		t.Errorf("commandExplore output = %q; want %q", out, want)
+	}
+}
+
+func TestCommandExplore_noArgs(t *testing.T) {
+	cfg := &config{}
+	err := commandExplore(cfg, nil)
+	if err == nil {
+		t.Fatal("commandExplore with no args: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "usage") {
+		t.Errorf("error = %v; want message containing \"usage\"", err)
+	}
+}
+
+func TestCommandExplore_fetchError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+	cfg := &config{client: ts.Client(), pokeAPIBaseURL: ts.URL + "/location-area/"}
+	err := commandExplore(cfg, []string{"unknown-area"})
+	if err == nil {
+		t.Fatal("commandExplore with 404: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "404") {
+		t.Errorf("error = %v; want message containing \"404\"", err)
+	}
+}
+
+func TestCommandExplore_cacheHit(t *testing.T) {
+	var hits int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, exploreAreaJSON)
+	}))
+	defer ts.Close()
+
+	cfg := &config{
+		client:         ts.Client(),
+		pokeAPIBaseURL: ts.URL + "/location-area/",
+		cache:          pokecache.NewCache(1 * time.Hour),
+	}
+	captureStdout(t, func() {
+		if err := commandExplore(cfg, []string{"pastoria-city-area"}); err != nil {
+			t.Fatalf("first explore: %v", err)
+		}
+	})
+	captureStdout(t, func() {
+		if err := commandExplore(cfg, []string{"pastoria-city-area"}); err != nil {
+			t.Fatalf("second explore: %v", err)
+		}
+	})
+	if hits != 1 {
+		t.Errorf("HTTP handler calls = %d; want 1 (second explore served from cache)", hits)
+	}
+}
+
+func TestCommandExplore_viaRegistry(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, exploreAreaJSON)
+	}))
+	defer ts.Close()
+
+	cfg := &config{client: ts.Client(), pokeAPIBaseURL: ts.URL + "/location-area/"}
+	reg := commandRegistry()
+	out := captureStdout(t, func() {
+		handled, err := runRegisteredCommand(reg, cfg, "explore", []string{"pastoria-city-area"})
+		if !handled || err != nil {
+			t.Fatalf("handled=%v err=%v", handled, err)
+		}
+	})
+	if !strings.Contains(out, "tentacool") {
+		t.Errorf("output = %q; want it to contain \"tentacool\"", out)
 	}
 }
 
@@ -321,7 +435,7 @@ func TestCommandMap_fetchError(t *testing.T) {
 		Next:   &u,
 		client: ts.Client(),
 	}
-	err := commandMap(cfg)
+	err := commandMap(cfg, nil)
 	if err == nil {
 		t.Fatal("commandMap: want error on HTTP 500")
 	}
@@ -344,7 +458,7 @@ func TestRunRegisteredCommand_map(t *testing.T) {
 	}
 	reg := commandRegistry()
 	out := captureStdout(t, func() {
-		handled, err := runRegisteredCommand(reg, cfg, "map")
+		handled, err := runRegisteredCommand(reg, cfg, "map", nil)
 		if !handled || err != nil {
 			t.Fatalf("handled=%v err=%v", handled, err)
 		}
@@ -368,7 +482,7 @@ func TestRunRegisteredCommand_mapb(t *testing.T) {
 	}
 	reg := commandRegistry()
 	out := captureStdout(t, func() {
-		handled, err := runRegisteredCommand(reg, cfg, "mapb")
+		handled, err := runRegisteredCommand(reg, cfg, "mapb", nil)
 		if !handled || err != nil {
 			t.Fatalf("handled=%v err=%v", handled, err)
 		}
@@ -382,9 +496,9 @@ func TestRunRegisteredCommand(t *testing.T) {
 	cfg := &config{}
 	t.Run("unknown command", func(t *testing.T) {
 		commands := map[string]cliCommand{
-			"yes": {callback: func(*config) error { return nil }},
+			"yes": {callback: func(*config, []string) error { return nil }},
 		}
-		handled, err := runRegisteredCommand(commands, cfg, "no")
+		handled, err := runRegisteredCommand(commands, cfg, "no", nil)
 		if handled || err != nil {
 			t.Errorf("handled=%v err=%v; want handled=false err=nil", handled, err)
 		}
@@ -392,9 +506,9 @@ func TestRunRegisteredCommand(t *testing.T) {
 	t.Run("callback succeeds", func(t *testing.T) {
 		var called bool
 		commands := map[string]cliCommand{
-			"ping": {callback: func(*config) error { called = true; return nil }},
+			"ping": {callback: func(*config, []string) error { called = true; return nil }},
 		}
-		handled, err := runRegisteredCommand(commands, cfg, "ping")
+		handled, err := runRegisteredCommand(commands, cfg, "ping", nil)
 		if !handled || err != nil || !called {
 			t.Errorf("handled=%v err=%v called=%v; want handled=true err=nil called=true", handled, err, called)
 		}
@@ -402,9 +516,9 @@ func TestRunRegisteredCommand(t *testing.T) {
 	t.Run("callback returns error", func(t *testing.T) {
 		want := errors.New("boom")
 		commands := map[string]cliCommand{
-			"bad": {callback: func(*config) error { return want }},
+			"bad": {callback: func(*config, []string) error { return want }},
 		}
-		handled, err := runRegisteredCommand(commands, cfg, "bad")
+		handled, err := runRegisteredCommand(commands, cfg, "bad", nil)
 		if !handled || err != want {
 			t.Errorf("handled=%v err=%v; want handled=true err=boom", handled, err)
 		}

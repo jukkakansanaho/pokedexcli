@@ -12,16 +12,17 @@ import (
 
 // config holds REPL state needed for commands (e.g. PokeAPI pagination URLs).
 type config struct {
-	Next     *string
-	Previous *string
-	client   *http.Client // if nil, http.DefaultClient; tests may set for httptest
-	cache    *pokecache.Cache
+	Next            *string
+	Previous        *string
+	client          *http.Client // if nil, http.DefaultClient; tests may set for httptest
+	cache           *pokecache.Cache
+	pokeAPIBaseURL  string // if empty, the pokeapi package default is used
 }
 
 type cliCommand struct {
 	name        string
 	description string
-	callback    func(*config) error
+	callback    func(*config, []string) error
 }
 
 func commandRegistry() map[string]cliCommand {
@@ -46,33 +47,38 @@ func commandRegistry() map[string]cliCommand {
 			description: "List the previous 20 location areas",
 			callback:    commandMapb,
 		},
+		"explore": {
+			name:        "explore",
+			description: "Explore a location area by name",
+			callback:    commandExplore,
+		},
 	}
 }
 
-func runRegisteredCommand(commands map[string]cliCommand, cfg *config, cmd string) (handled bool, err error) {
+func runRegisteredCommand(commands map[string]cliCommand, cfg *config, cmd string, args []string) (handled bool, err error) {
 	c, ok := commands[cmd]
 	if !ok {
 		return false, nil
 	}
-	return true, c.callback(cfg)
+	return true, c.callback(cfg, args)
 }
 
 func helpMessage() string {
-	return "Welcome to the Pokedex!\nUsage:\n\nhelp: Displays a help message\nmap: List the next 20 location areas\nmapb: List the previous 20 location areas\nexit: Exit the Pokedex\n"
+	return "Welcome to the Pokedex!\nUsage:\n\nhelp: Displays a help message\nmap: List the next 20 location areas\nmapb: List the previous 20 location areas\nexplore <area>: Explore a location area by name\nexit: Exit the Pokedex\n"
 }
 
-func commandHelp(_ *config) error {
+func commandHelp(_ *config, _ []string) error {
 	fmt.Print(helpMessage())
 	return nil
 }
 
-func commandExit(_ *config) error {
+func commandExit(_ *config, _ []string) error {
 	fmt.Println("Closing the Pokedex... Goodbye!")
 	os.Exit(0)
 	return nil
 }
 
-func commandMap(cfg *config) error {
+func commandMap(cfg *config, _ []string) error {
 	var pageURL string
 	if cfg.Next != nil && *cfg.Next != "" {
 		pageURL = *cfg.Next
@@ -93,7 +99,7 @@ func commandMap(cfg *config) error {
 	return nil
 }
 
-func commandMapb(cfg *config) error {
+func commandMapb(cfg *config, _ []string) error {
 	if cfg.Previous == nil || *cfg.Previous == "" {
 		fmt.Println("you're on the first page")
 		return nil
@@ -110,6 +116,27 @@ func commandMapb(cfg *config) error {
 	cfg.Previous = page.Previous
 	for _, r := range page.Results {
 		fmt.Println(r.Name)
+	}
+	return nil
+}
+
+func commandExplore(cfg *config, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: explore <area_name>")
+	}
+	areaName := args[0]
+	fmt.Printf("Exploring %s...\n", areaName)
+	client := cfg.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	area, err := pokeapi.GetLocationArea(client, cfg.cache, cfg.pokeAPIBaseURL, areaName)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Found Pokemon:")
+	for _, enc := range area.PokemonEncounters {
+		fmt.Printf(" - %s\n", enc.Pokemon.Name)
 	}
 	return nil
 }
