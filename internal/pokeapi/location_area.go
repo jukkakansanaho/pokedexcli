@@ -2,13 +2,16 @@ package pokeapi
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 
 	"github.com/jukkakansanaho/pokedexcli/internal/pokecache"
 )
+
+// ErrNotFound is returned when the API responds with 404.
+var ErrNotFound = errors.New("not found")
 
 const defaultLocationAreaListURL = "https://pokeapi.co/api/v2/location-area/"
 
@@ -36,7 +39,6 @@ func ListLocationAreas(client *http.Client, cache *pokecache.Cache, url string) 
 
 	if cache != nil {
 		if body, ok := cache.Get(url); ok {
-			log.Printf("pokeapi: cache hit for %s", url)
 			var out LocationAreaListResponse
 			if err := json.Unmarshal(body, &out); err != nil {
 				return nil, err
@@ -54,8 +56,11 @@ func ListLocationAreas(client *http.Client, cache *pokecache.Cache, url string) 
 	if err != nil {
 		return nil, err
 	}
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNotFound
+	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, fmt.Errorf("pokeapi: GET %s: %s", url, resp.Status)
+		return nil, fmt.Errorf("unexpected status %s", resp.Status)
 	}
 	if cache != nil {
 		cache.Add(url, body)
@@ -93,7 +98,6 @@ func GetLocationArea(client *http.Client, cache *pokecache.Cache, baseURL, name 
 
 	if cache != nil {
 		if body, ok := cache.Get(url); ok {
-			log.Printf("pokeapi: cache hit for %s", url)
 			var out LocationAreaResponse
 			if err := json.Unmarshal(body, &out); err != nil {
 				return nil, err
@@ -111,8 +115,11 @@ func GetLocationArea(client *http.Client, cache *pokecache.Cache, baseURL, name 
 	if err != nil {
 		return nil, err
 	}
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNotFound
+	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, fmt.Errorf("pokeapi: GET %s: %s", url, resp.Status)
+		return nil, fmt.Errorf("unexpected status %s", resp.Status)
 	}
 	if cache != nil {
 		cache.Add(url, body)

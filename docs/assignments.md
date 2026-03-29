@@ -161,7 +161,7 @@ Thus file contains assignments (step-by-step development guidelines) for Pokedex
   }
   ```
 
-- Register the exit command. Update your REPL loop to use the "command" the user typed in to look up the callback function in the registry. If the command is found, call the callback (and print any errors that are returned). If there isn't a handler, just print `Unknown command`.
+- Register the `exit` command. Update your REPL loop to use the "command" the user typed in to look up the callback function in the registry. If the command is found, call the callback (and print any errors that are returned). If there isn't a handler, just print `Unknown command`.
 
 ### Task 4.3
 
@@ -192,7 +192,7 @@ Thus file contains assignments (step-by-step development guidelines) for Pokedex
 
 ### Task 5.1
 
-- Add the map command (https://pokeapi.co/). It displays the names of 20 location areas in the Pokemon world. Each subsequent call to map should display the next 20 locations, and so on. This will be how we explore the Pokemon world. Example usage:
+- Add the `map` command (https://pokeapi.co/). It displays the names of 20 location areas in the Pokemon world. Each subsequent call to map should display the next 20 locations, and so on. This will be how we explore the Pokemon world. Example usage:
 
   ```
   Pokedex > map
@@ -337,7 +337,7 @@ Thus file contains assignments (step-by-step development guidelines) for Pokedex
 
 ### Task 7.1
 
-- Add an "explore" command. It takes the name of a location area as an argument.
+- Add an `explore` command. It takes the name of a location area as an argument.
 - Write tests for "explore" command.
 
 Tips:
@@ -365,3 +365,25 @@ Found Pokemon:
  - gastrodon
 Pokedex >
 ```
+
+## Assignment 8
+
+### Task 8.1
+
+- Add a `catch` command. It takes the name of a Pokemon as an argument. Example usage:
+
+Pokedex > catch pikachu
+Throwing a Pokeball at pikachu...
+pikachu escaped!
+Pokedex > catch pikachu
+Throwing a Pokeball at pikachu...
+pikachu was caught!
+
+- Be sure to print the Throwing a Pokeball at <pokemon>... message before determining if the Pokemon was caught or not.
+- Use the Pokemon endpoint (https://pokeapi.co/docs/v2#pokemon ) to get information about a Pokemon by name.
+- Give the user a chance to catch the Pokemon using the math/rand package (https://pkg.go.dev/math/rand#Rand.Intn ).
+- You can use the pokemon's "base experience" to determine the chance of catching it. The higher the base experience, the harder it should be to catch.
+- Once the Pokemon is caught, add it to the user's Pokedex. I used a map[string]Pokemon to keep track of caught Pokemon.
+- Test the `catch` command manually - make sure you can actually catch a Pokemon within a reasonable number of tries.
+
+- Write tests for `catch` command and run them.

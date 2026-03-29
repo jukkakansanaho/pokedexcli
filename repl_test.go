@@ -62,6 +62,7 @@ func TestCommandRegistry(t *testing.T) {
 		"map":     {wantName: "map", wantDesc: "List the next 20 location areas"},
 		"mapb":    {wantName: "mapb", wantDesc: "List the previous 20 location areas"},
 		"explore": {wantName: "explore", wantDesc: "Explore a location area by name"},
+		"catch":   {wantName: "catch", wantDesc: "Catch a Pokemon by name"},
 		"exit":    {wantName: "exit", wantDesc: "Exit the Pokedex"},
 	}
 	for key, w := range cases {
@@ -82,7 +83,7 @@ func TestCommandRegistry(t *testing.T) {
 }
 
 func TestHelpMessage(t *testing.T) {
-	want := "Welcome to the Pokedex!\nUsage:\n\nhelp: Displays a help message\nmap: List the next 20 location areas\nmapb: List the previous 20 location areas\nexplore <area>: Explore a location area by name\nexit: Exit the Pokedex\n"
+	want := "Welcome to the Pokedex!\nUsage:\n\nhelp: Displays a help message\nmap: List the next 20 location areas\nmapb: List the previous 20 location areas\nexplore <area>: Explore a location area by name\ncatch <pokemon>: Catch a Pokemon by name\nexit: Exit the Pokedex\n"
 	if got := helpMessage(); got != want {
 		t.Errorf("helpMessage() = %q; want %q", got, want)
 	}
@@ -364,8 +365,8 @@ func TestCommandExplore_fetchError(t *testing.T) {
 	if err == nil {
 		t.Fatal("commandExplore with 404: want error, got nil")
 	}
-	if !strings.Contains(err.Error(), "404") {
-		t.Errorf("error = %v; want message containing \"404\"", err)
+	if !strings.Contains(err.Error(), "not a known location area") {
+		t.Errorf("error = %v; want message containing \"not a known location area\"", err)
 	}
 }
 
@@ -523,4 +524,162 @@ func TestRunRegisteredCommand(t *testing.T) {
 			t.Errorf("handled=%v err=%v; want handled=true err=boom", handled, err)
 		}
 	})
+}
+
+// --- catch command tests ---
+
+const pikachuJSON = `{
+	"id": 25,
+	"name": "pikachu",
+	"base_experience": 112,
+	"height": 4,
+	"weight": 60,
+	"stats": [
+		{"base_stat": 35, "stat": {"name": "hp"}},
+		{"base_stat": 55, "stat": {"name": "attack"}}
+	],
+	"types": [
+		{"type": {"name": "electric"}}
+	]
+}`
+
+func TestCommandCatch_noArgs(t *testing.T) {
+	cfg := &config{}
+	err := commandCatch(cfg, nil)
+	if err == nil {
+		t.Fatal("commandCatch with no args: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "usage") {
+		t.Errorf("error = %v; want message containing \"usage\"", err)
+	}
+}
+
+func TestCommandCatch_fetchError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+	cfg := &config{client: ts.Client(), pokemonBaseURL: ts.URL + "/pokemon/"}
+	err := commandCatch(cfg, []string{"unknownmon"})
+	if err == nil {
+		t.Fatal("commandCatch with 404: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "not a known Pokemon") {
+		t.Errorf("error = %v; want message containing \"not a known Pokemon\"", err)
+	}
+}
+
+func TestCommandCatch_printsThrowing(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, pikachuJSON)
+	}))
+	defer ts.Close()
+	cfg := &config{client: ts.Client(), pokemonBaseURL: ts.URL + "/pokemon/"}
+	out := captureStdout(t, func() {
+		_ = commandCatch(cfg, []string{"pikachu"})
+	})
+	if !strings.HasPrefix(out, "Throwing a Pokeball at pikachu...") {
+		t.Errorf("output = %q; want it to start with \"Throwing a Pokeball at pikachu...\"", out)
+	}
+}
+
+func TestCommandCatch_caught(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// base_experience 0 → catchSucceeds always returns true
+		fmt.Fprint(w, `{"id":1,"name":"caterpie","base_experience":0,"height":3,"weight":29,"stats":[],"types":[]}`)
+	}))
+	defer ts.Close()
+	cfg := &config{client: ts.Client(), pokemonBaseURL: ts.URL + "/pokemon/"}
+	out := captureStdout(t, func() {
+		if err := commandCatch(cfg, []string{"caterpie"}); err != nil {
+			t.Fatalf("commandCatch: %v", err)
+		}
+	})
+	if !strings.Contains(out, "was caught!") {
+		t.Errorf("output = %q; want it to contain \"was caught!\"", out)
+	}
+	if cfg.pokedex == nil || cfg.pokedex["caterpie"].Name != "caterpie" {
+		t.Errorf("pokedex does not contain caterpie after catch")
+	}
+}
+
+func TestCommandCatch_escaped(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// base_experience 1000000 → catchSucceeds always returns false (rand.Intn(1000000) < 50 is astronomically unlikely)
+		fmt.Fprint(w, `{"id":999,"name":"bigmon","base_experience":1000000,"height":10,"weight":100,"stats":[],"types":[]}`)
+	}))
+	defer ts.Close()
+	cfg := &config{client: ts.Client(), pokemonBaseURL: ts.URL + "/pokemon/"}
+	out := captureStdout(t, func() {
+		if err := commandCatch(cfg, []string{"bigmon"}); err != nil {
+			t.Fatalf("commandCatch: %v", err)
+		}
+	})
+	if !strings.Contains(out, "escaped!") {
+		t.Errorf("output = %q; want it to contain \"escaped!\"", out)
+	}
+	if cfg.pokedex != nil && cfg.pokedex["bigmon"].Name == "bigmon" {
+		t.Errorf("pokedex should not contain bigmon after escape")
+	}
+}
+
+func TestCommandCatch_cacheHit(t *testing.T) {
+	var hits int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id":1,"name":"caterpie","base_experience":0,"height":3,"weight":29,"stats":[],"types":[]}`)
+	}))
+	defer ts.Close()
+	cfg := &config{
+		client:         ts.Client(),
+		pokemonBaseURL: ts.URL + "/pokemon/",
+		cache:          pokecache.NewCache(1 * time.Hour),
+	}
+	captureStdout(t, func() { _ = commandCatch(cfg, []string{"caterpie"}) })
+	captureStdout(t, func() { _ = commandCatch(cfg, []string{"caterpie"}) })
+	if hits != 1 {
+		t.Errorf("HTTP handler calls = %d; want 1 (second catch served from cache)", hits)
+	}
+}
+
+func TestCommandCatch_inRegistry(t *testing.T) {
+	reg := commandRegistry()
+	c, ok := reg["catch"]
+	if !ok {
+		t.Fatal("commandRegistry: missing \"catch\"")
+	}
+	if c.name != "catch" {
+		t.Errorf("catch name = %q; want \"catch\"", c.name)
+	}
+	if c.description != "Catch a Pokemon by name" {
+		t.Errorf("catch description = %q; want \"Catch a Pokemon by name\"", c.description)
+	}
+	if c.callback == nil {
+		t.Error("catch callback is nil")
+	}
+}
+
+func TestCatchSucceeds_zeroBaseExp(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		if !catchSucceeds(0) {
+			t.Error("catchSucceeds(0) returned false; want always true")
+		}
+	}
+}
+
+func TestCatchSucceeds_veryHighBaseExp(t *testing.T) {
+	successes := 0
+	trials := 1000
+	for i := 0; i < trials; i++ {
+		if catchSucceeds(1000000) {
+			successes++
+		}
+	}
+	if successes > 1 {
+		t.Errorf("catchSucceeds(1000000): %d/%d succeeded; expected near 0", successes, trials)
+	}
 }

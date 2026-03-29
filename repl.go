@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"os"
 	"strings"
@@ -12,11 +14,13 @@ import (
 
 // config holds REPL state needed for commands (e.g. PokeAPI pagination URLs).
 type config struct {
-	Next            *string
-	Previous        *string
-	client          *http.Client // if nil, http.DefaultClient; tests may set for httptest
-	cache           *pokecache.Cache
-	pokeAPIBaseURL  string // if empty, the pokeapi package default is used
+	Next              *string
+	Previous          *string
+	client            *http.Client // if nil, http.DefaultClient; tests may set for httptest
+	cache             *pokecache.Cache
+	pokeAPIBaseURL    string // if empty, the pokeapi package default is used
+	pokemonBaseURL    string // if empty, the pokeapi package default is used
+	pokedex           map[string]pokeapi.Pokemon
 }
 
 type cliCommand struct {
@@ -52,6 +56,11 @@ func commandRegistry() map[string]cliCommand {
 			description: "Explore a location area by name",
 			callback:    commandExplore,
 		},
+		"catch": {
+			name:        "catch",
+			description: "Catch a Pokemon by name",
+			callback:    commandCatch,
+		},
 	}
 }
 
@@ -64,7 +73,7 @@ func runRegisteredCommand(commands map[string]cliCommand, cfg *config, cmd strin
 }
 
 func helpMessage() string {
-	return "Welcome to the Pokedex!\nUsage:\n\nhelp: Displays a help message\nmap: List the next 20 location areas\nmapb: List the previous 20 location areas\nexplore <area>: Explore a location area by name\nexit: Exit the Pokedex\n"
+	return "Welcome to the Pokedex!\nUsage:\n\nhelp: Displays a help message\nmap: List the next 20 location areas\nmapb: List the previous 20 location areas\nexplore <area>: Explore a location area by name\ncatch <pokemon>: Catch a Pokemon by name\nexit: Exit the Pokedex\n"
 }
 
 func commandHelp(_ *config, _ []string) error {
@@ -132,12 +141,60 @@ func commandExplore(cfg *config, args []string) error {
 	}
 	area, err := pokeapi.GetLocationArea(client, cfg.cache, cfg.pokeAPIBaseURL, areaName)
 	if err != nil {
-		return err
+		if errors.Is(err, pokeapi.ErrNotFound) {
+			return fmt.Errorf("%q is not a known location area — did you mean 'catch %s'?", areaName, areaName)
+		}
+		return fmt.Errorf("could not explore %q: %w", areaName, err)
 	}
 	fmt.Println("Found Pokemon:")
 	for _, enc := range area.PokemonEncounters {
 		fmt.Printf(" - %s\n", enc.Pokemon.Name)
 	}
+	return nil
+}
+
+// catchSucceeds reports whether a catch attempt succeeds.
+// Higher baseExperience makes the Pokemon harder to catch.
+// A random number in [0, baseExperience) is generated; if it is less than
+// half the base experience plus a fixed bonus of 30, the catch succeeds.
+// This gives roughly 80% chance for weak Pokemon (base exp ~39) and
+// ~15% for legendaries (base exp ~340+).
+func catchSucceeds(baseExperience int) bool {
+	if baseExperience <= 0 {
+		return true
+	}
+	return rand.Intn(baseExperience) < 50
+}
+
+func commandCatch(cfg *config, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: catch <pokemon_name>")
+	}
+	name := args[0]
+	fmt.Printf("Throwing a Pokeball at %s...\n", name)
+
+	client := cfg.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	pokemon, err := pokeapi.GetPokemon(client, cfg.cache, cfg.pokemonBaseURL, name)
+	if err != nil {
+		if errors.Is(err, pokeapi.ErrNotFound) {
+			return fmt.Errorf("%q is not a known Pokemon — check the name and try again", name)
+		}
+		return fmt.Errorf("could not catch %q: %w", name, err)
+	}
+
+	if !catchSucceeds(pokemon.BaseExperience) {
+		fmt.Printf("%s escaped!\n", name)
+		return nil
+	}
+
+	fmt.Printf("%s was caught!\n", name)
+	if cfg.pokedex == nil {
+		cfg.pokedex = make(map[string]pokeapi.Pokemon)
+	}
+	cfg.pokedex[pokemon.Name] = *pokemon
 	return nil
 }
 
