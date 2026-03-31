@@ -387,3 +387,33 @@ pikachu was caught!
 - Test the `catch` command manually - make sure you can actually catch a Pokemon within a reasonable number of tries.
 
 - Write tests for `catch` command and run them.
+
+## Assignment 9
+
+### Task 9.1
+
+- Add an `inspect` command. It takes the name of a Pokemon and prints the name, height, weight, stats and type(s) of the Pokemon. Example usage:
+
+Pokedex > inspect pidgey
+you have not caught that pokemon
+Pokedex > catch pidgey
+Throwing a Pokeball at pidgey...
+pidgey was caught!
+Pokedex > inspect pidgey
+Name: pidgey
+Height: 3
+Weight: 18
+Stats:
+  -hp: 40
+  -attack: 45
+  -defense: 40
+  -special-attack: 35
+  -special-defense: 35
+  -speed: 56
+Types:
+  - normal
+  - flying
+
+- You should not need to make an API call to get this information, since you should have already stored it when the user caught the Pokemon.
+
+- If the user has not caught the Pokemon, just print a message saying so.

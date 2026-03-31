@@ -61,6 +61,11 @@ func commandRegistry() map[string]cliCommand {
 			description: "Catch a Pokemon by name",
 			callback:    commandCatch,
 		},
+		"inspect": {
+			name:        "inspect",
+			description: "Inspect a caught Pokemon by name",
+			callback:    commandInspect,
+		},
 	}
 }
 
@@ -73,7 +78,7 @@ func runRegisteredCommand(commands map[string]cliCommand, cfg *config, cmd strin
 }
 
 func helpMessage() string {
-	return "Welcome to the Pokedex!\nUsage:\n\nhelp: Displays a help message\nmap: List the next 20 location areas\nmapb: List the previous 20 location areas\nexplore <area>: Explore a location area by name\ncatch <pokemon>: Catch a Pokemon by name\nexit: Exit the Pokedex\n"
+	return "Welcome to the Pokedex!\nUsage:\n\nhelp: Displays a help message\nmap: List the next 20 location areas\nmapb: List the previous 20 location areas\nexplore <area>: Explore a location area by name\ncatch <pokemon>: Catch a Pokemon by name\ninspect <pokemon>: Inspect a caught Pokemon by name\nexit: Exit the Pokedex\n"
 }
 
 func commandHelp(_ *config, _ []string) error {
@@ -195,6 +200,30 @@ func commandCatch(cfg *config, args []string) error {
 		cfg.pokedex = make(map[string]pokeapi.Pokemon)
 	}
 	cfg.pokedex[pokemon.Name] = *pokemon
+	return nil
+}
+
+func commandInspect(cfg *config, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: inspect <pokemon_name>")
+	}
+	name := args[0]
+	pokemon, ok := cfg.pokedex[name]
+	if !ok {
+		fmt.Println("you have not caught that pokemon")
+		return nil
+	}
+	fmt.Printf("Name: %s\n", pokemon.Name)
+	fmt.Printf("Height: %d\n", pokemon.Height)
+	fmt.Printf("Weight: %d\n", pokemon.Weight)
+	fmt.Println("Stats:")
+	for _, s := range pokemon.Stats {
+		fmt.Printf("  -%s: %d\n", s.Stat.Name, s.BaseStat)
+	}
+	fmt.Println("Types:")
+	for _, t := range pokemon.Types {
+		fmt.Printf("  - %s\n", t.Type.Name)
+	}
 	return nil
 }
 
