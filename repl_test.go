@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jukkakansanaho/pokedexcli/internal/pokeapi"
 	"github.com/jukkakansanaho/pokedexcli/internal/pokecache"
 )
 
@@ -83,7 +84,7 @@ func TestCommandRegistry(t *testing.T) {
 }
 
 func TestHelpMessage(t *testing.T) {
-	want := "Welcome to the Pokedex!\nUsage:\n\nhelp: Displays a help message\nmap: List the next 20 location areas\nmapb: List the previous 20 location areas\nexplore <area>: Explore a location area by name\ncatch <pokemon>: Catch a Pokemon by name\nexit: Exit the Pokedex\n"
+	want := "Welcome to the Pokedex!\nUsage:\n\nhelp: Displays a help message\nmap: List the next 20 location areas\nmapb: List the previous 20 location areas\nexplore <area>: Explore a location area by name\ncatch <pokemon>: Catch a Pokemon by name\ninspect <pokemon>: Inspect a caught Pokemon by name\nexit: Exit the Pokedex\n"
 	if got := helpMessage(); got != want {
 		t.Errorf("helpMessage() = %q; want %q", got, want)
 	}
@@ -660,6 +661,87 @@ func TestCommandCatch_inRegistry(t *testing.T) {
 	}
 	if c.callback == nil {
 		t.Error("catch callback is nil")
+	}
+}
+
+func TestCommandInspect_notCaught(t *testing.T) {
+	cfg := &config{pokedex: map[string]pokeapi.Pokemon{}}
+	out := captureStdout(t, func() {
+		if err := commandInspect(cfg, []string{"pidgey"}); err != nil {
+			t.Fatalf("commandInspect: %v", err)
+		}
+	})
+	if !strings.Contains(out, "you have not caught that pokemon") {
+		t.Errorf("output = %q; want it to contain \"you have not caught that pokemon\"", out)
+	}
+}
+
+func TestCommandInspect_caught(t *testing.T) {
+	p := pokeapi.Pokemon{
+		Name:   "pidgey",
+		Height: 3,
+		Weight: 18,
+		Stats: []struct {
+			BaseStat int `json:"base_stat"`
+			Stat     struct {
+				Name string `json:"name"`
+			} `json:"stat"`
+		}{
+			{BaseStat: 40, Stat: struct {
+				Name string `json:"name"`
+			}{Name: "hp"}},
+			{BaseStat: 45, Stat: struct {
+				Name string `json:"name"`
+			}{Name: "attack"}},
+		},
+		Types: []struct {
+			Type struct {
+				Name string `json:"name"`
+			} `json:"type"`
+		}{
+			{Type: struct {
+				Name string `json:"name"`
+			}{Name: "normal"}},
+			{Type: struct {
+				Name string `json:"name"`
+			}{Name: "flying"}},
+		},
+	}
+	cfg := &config{pokedex: map[string]pokeapi.Pokemon{"pidgey": p}}
+	out := captureStdout(t, func() {
+		if err := commandInspect(cfg, []string{"pidgey"}); err != nil {
+			t.Fatalf("commandInspect: %v", err)
+		}
+	})
+	for _, want := range []string{"Name: pidgey", "Height: 3", "Weight: 18", "Stats:", "-hp: 40", "-attack: 45", "Types:", "- normal", "- flying"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output = %q; want it to contain %q", out, want)
+		}
+	}
+}
+
+func TestCommandInspect_noArgs(t *testing.T) {
+	cfg := &config{}
+	err := commandInspect(cfg, []string{})
+	if err == nil {
+		t.Error("commandInspect with no args: want error, got nil")
+	}
+}
+
+func TestCommandInspect_inRegistry(t *testing.T) {
+	reg := commandRegistry()
+	c, ok := reg["inspect"]
+	if !ok {
+		t.Fatal("commandRegistry: missing \"inspect\"")
+	}
+	if c.name != "inspect" {
+		t.Errorf("inspect name = %q; want \"inspect\"", c.name)
+	}
+	if c.description != "Inspect a caught Pokemon by name" {
+		t.Errorf("inspect description = %q; want \"Inspect a caught Pokemon by name\"", c.description)
+	}
+	if c.callback == nil {
+		t.Error("inspect callback is nil")
 	}
 }
 
