@@ -745,6 +745,145 @@ func TestCommandInspect_inRegistry(t *testing.T) {
 	}
 }
 
+func TestCommandPokedex_empty(t *testing.T) {
+	cfg := &config{pokedex: map[string]pokeapi.Pokemon{}}
+	out := captureStdout(t, func() {
+		if err := commandPokedex(cfg, nil); err != nil {
+			t.Fatalf("commandPokedex: %v", err)
+		}
+	})
+	if !strings.Contains(out, "empty") {
+		t.Errorf("output = %q; want it to contain \"empty\"", out)
+	}
+}
+
+func TestCommandPokedex_listsCaughtPokemon(t *testing.T) {
+	p1 := pokeapi.Pokemon{Name: "pidgey"}
+	p2 := pokeapi.Pokemon{Name: "caterpie"}
+	cfg := &config{pokedex: map[string]pokeapi.Pokemon{
+		"pidgey":   p1,
+		"caterpie": p2,
+	}}
+	out := captureStdout(t, func() {
+		if err := commandPokedex(cfg, nil); err != nil {
+			t.Fatalf("commandPokedex: %v", err)
+		}
+	})
+	if !strings.Contains(out, "Your Pokedex:") {
+		t.Errorf("output = %q; want it to contain \"Your Pokedex:\"", out)
+	}
+	if !strings.Contains(out, "pidgey") {
+		t.Errorf("output = %q; want it to contain \"pidgey\"", out)
+	}
+	if !strings.Contains(out, "caterpie") {
+		t.Errorf("output = %q; want it to contain \"caterpie\"", out)
+	}
+}
+
+func TestCommandPokedex_inRegistry(t *testing.T) {
+	reg := commandRegistry()
+	c, ok := reg["pokedex"]
+	if !ok {
+		t.Fatal("commandRegistry: missing \"pokedex\"")
+	}
+	if c.name != "pokedex" {
+		t.Errorf("pokedex name = %q; want \"pokedex\"", c.name)
+	}
+	if c.description != "List all caught Pokemon" {
+		t.Errorf("pokedex description = %q; want \"List all caught Pokemon\"", c.description)
+	}
+	if c.callback == nil {
+		t.Error("pokedex callback is nil")
+	}
+}
+
+func TestCommandPokedex_nilPokedex(t *testing.T) {
+	cfg := &config{}
+	out := captureStdout(t, func() {
+		if err := commandPokedex(cfg, nil); err != nil {
+			t.Fatalf("commandPokedex with nil pokedex: %v", err)
+		}
+	})
+	if !strings.Contains(out, "empty") {
+		t.Errorf("output = %q; want it to contain \"empty\"", out)
+	}
+}
+
+func TestCommandPokedex_nilPokedexLenCheck(t *testing.T) {
+	cfg := &config{pokedex: nil}
+	if err := commandPokedex(cfg, nil); err != nil {
+		t.Fatalf("commandPokedex with nil pokedex map: %v", err)
+	}
+}
+
+func TestCommandPokedex_afterCatch(t *testing.T) {
+	cfg := &config{pokedex: map[string]pokeapi.Pokemon{
+		"pidgey": {Name: "pidgey"},
+	}}
+	out := captureStdout(t, func() {
+		if err := commandPokedex(cfg, nil); err != nil {
+			t.Fatalf("commandPokedex: %v", err)
+		}
+	})
+	if !strings.Contains(out, " - pidgey") {
+		t.Errorf("output = %q; want it to contain \" - pidgey\"", out)
+	}
+}
+
+func TestCommandPokedex_doesNotCallAPI(t *testing.T) {
+	// commandPokedex should work entirely from the in-memory pokedex,
+	// so even with a broken client it must succeed.
+	cfg := &config{
+		client:  nil,
+		pokedex: map[string]pokeapi.Pokemon{"bulbasaur": {Name: "bulbasaur"}},
+	}
+	if err := commandPokedex(cfg, nil); err != nil {
+		t.Fatalf("commandPokedex made an unexpected API call or returned error: %v", err)
+	}
+}
+
+func TestCommandPokedex_entryFormat(t *testing.T) {
+	cfg := &config{pokedex: map[string]pokeapi.Pokemon{
+		"mewtwo": {Name: "mewtwo"},
+	}}
+	out := captureStdout(t, func() {
+		if err := commandPokedex(cfg, nil); err != nil {
+			t.Fatalf("commandPokedex: %v", err)
+		}
+	})
+	if !strings.Contains(out, " - mewtwo") {
+		t.Errorf("output = %q; want it to contain \" - mewtwo\" (with leading space and dash)", out)
+	}
+}
+
+func TestCommandPokedex_ignoresArgs(t *testing.T) {
+	cfg := &config{pokedex: map[string]pokeapi.Pokemon{
+		"eevee": {Name: "eevee"},
+	}}
+	out := captureStdout(t, func() {
+		if err := commandPokedex(cfg, []string{"unexpected", "args"}); err != nil {
+			t.Fatalf("commandPokedex with unexpected args: %v", err)
+		}
+	})
+	if !strings.Contains(out, "eevee") {
+		t.Errorf("output = %q; want it to contain \"eevee\"", out)
+	}
+}
+
+func TestCommandPokedex_zeroBaseExpPokemon(t *testing.T) {
+	cfg := &config{pokedex: map[string]pokeapi.Pokemon{
+		"missingno": {Name: "missingno", BaseExperience: 0},
+	}}
+	out := captureStdout(t, func() {
+		if err := commandPokedex(cfg, nil); err != nil {
+			t.Fatalf("commandPokedex: %v", err)
+		}
+	})
+	if !strings.Contains(out, "missingno") {
+		t.Errorf("output = %q; want it to contain \"missingno\"", out)
+	}
+}
+
 func TestCatchSucceeds_zeroBaseExp(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		if !catchSucceeds(0) {

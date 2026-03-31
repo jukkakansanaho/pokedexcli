@@ -417,3 +417,25 @@ Types:
 - You should not need to make an API call to get this information, since you should have already stored it when the user caught the Pokemon.
 
 - If the user has not caught the Pokemon, just print a message saying so.
+
+- Add tests and run them.
+## Assignment 10
+
+### Task 10.1
+
+- Add a `pokedex` command. It takes no arguments but prints a list of all the names of the Pokemon the user has caught. Example usage:
+
+Pokedex > catch pidgey
+Throwing a Pokeball at pidgey...
+pidgey was caught!
+You may now inspect it with the inspect command.
+Pokedex > catch caterpie
+Throwing a Pokeball at caterpie...
+caterpie was caught!
+You may now inspect it with the inspect command.
+Pokedex > pokedex
+Your Pokedex:
+ - pidgey
+ - caterpie
+
+- Add tests and run them.
